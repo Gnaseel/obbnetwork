@@ -4,6 +4,7 @@ import time
 
 import torch
 import torchvision.models.detection.mask_rcnn
+import torchvision.transforms as transforms
 import utils
 # from coco_eval import CocoEvaluator
 # from coco_utils import get_coco_api_from_dataset
@@ -25,7 +26,9 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
         )
 
     for images, targets in metric_logger.log_every(data_loader, print_freq, header):
-        images = list(image.to(device) for image in images)
+
+        tf = transforms.ToTensor()
+        images = list(tf(image).to(device) for image in images)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         with torch.cuda.amp.autocast(enabled=scaler is not None):
             loss_dict = model(images, targets)
@@ -36,7 +39,8 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
         losses_reduced = sum(loss for loss in loss_dict_reduced.values())
 
         loss_value = losses_reduced.item()
-
+        print("LOSS {}".format(loss_value))
+        print("LOSS {}".format(losses_reduced))
         if not math.isfinite(loss_value):
             print(f"Loss is {loss_value}, stopping training")
             print(loss_dict_reduced)
@@ -91,3 +95,25 @@ def evaluate(model, data_loader, device):
 
         if torch.cuda.is_available():
             torch.cuda.synchronize()
+        model_time = time.time()
+        outputs = model(images)
+
+        outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+        model_time = time.time() - model_time
+
+        res = {target["image_id"].item(): output for target, output in zip(targets, outputs)}
+        evaluator_time = time.time()
+        coco_evaluator.update(res)
+        evaluator_time = time.time() - evaluator_time
+        metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
+
+    # gather the stats from all processes
+    metric_logger.synchronize_between_processes()
+    print("Averaged stats:", metric_logger)
+    coco_evaluator.synchronize_between_processes()
+
+    # accumulate predictions from all images
+    coco_evaluator.accumulate()
+    coco_evaluator.summarize()
+    torch.set_num_threads(n_threads)
+    return coco_evaluator
