@@ -13,6 +13,7 @@ class YOLOimage:
         self.fileDir=""     # /workspace/src/darknet/build/darknet/x64/data/obj/4.jpg
         self.fileName=""    # 4
         self.item=[]
+        self.infertime=0
         return
 
     def get_bbox_point(self, text):
@@ -28,7 +29,7 @@ class YOLOimage:
         # print("     {} {} {} {}".format(left, top, width, height))
         return [left, top, width, height]
 
-    def get_item_data(self, text, classes):
+    def get_item_data_fromTXT(self, text, classes):
         for idx, clss in enumerate(classes):
             i = text.find(clss)
             if i != -1:
@@ -36,13 +37,25 @@ class YOLOimage:
                 item.class_num = idx
                 item.bbox = self.get_bbox_point(text)
                 self.item.append(item)
-
+    def get_img_infer_time_fromTXT(self, text):
+        start = text.find('in')
+        end = text.find('milli')
+        # print("IDX  {} {}".format(start,end))
+        # print(text[start+2:end])
+        time = float(text[start+2:end])
+        # print("TIME = {}".format(time))
+        self.infertime = time
 class YOLOresult:
     def __init__(self):
         self.images=[]
-        self.classes=["Kettlebell", "CUP", "Pillow"]
+        self.classes=["Kettlebell", "CUP", "Pillow", "Duck"]
         return
 
+    def get_item_count(self):
+        count=0
+        for img in self.images:
+            count += len(img.item)
+        return count
     def get_image_list(self, path="/workspace/src/darknet/build/darknet/x64/data/train.txt"):
         f = open(path)
         lines = f.readlines()
@@ -64,18 +77,22 @@ class YOLOresult:
                 count +=1
         sum_1 = np.array(sum_1)
         sum_2 = np.array(sum_2)
-        print("{} {}".format(np.mean(sum_1), np.mean(sum_2)))
-        print("{} {}".format(np.var(sum_1), np.var(sum_2)))
-        print("{} {}".format(np.std(sum_1), np.std(sum_2)))
+        print("MEAN = {} {}".format(np.mean(sum_1), np.mean(sum_2)))
+        print("VAR {} {}".format(np.var(sum_1), np.var(sum_2)))
+        print("STD {} {}".format(np.std(sum_1), np.std(sum_2)))
+
     def parsing(self, result_path, img_path_list):
         
         result = open(result_path)
         result_lines = result.readlines()
         result_idx = 0
+        # print("LEN {}".format(len(result_lines)))
         for path in img_path_list:
+            # print(path)
 
             # for idx, line in enumerate(result_lines[result_idx:]):
             while result_idx < len(result_lines):
+                # print("sdfasdf")
                 line = self.delete_LF(result_lines[result_idx])
                 i = line.find(path)
                 if i == -1:
@@ -87,7 +104,8 @@ class YOLOresult:
                 yolo_image = YOLOimage()
                 yolo_image.fileDir=path
                 yolo_image.fileName=int(path.split(os.sep)[-1][:-4])
-                
+                yolo_image.get_img_infer_time_fromTXT(line)
+                # print(yolo_image.infertime)
                 result_idx +=1
 
                 while result_idx < len(result_lines):
@@ -95,7 +113,7 @@ class YOLOresult:
                     i = line.find("/work")
                     if i != -1:
                         break
-                    yolo_image.get_item_data(line, self.classes)
+                    yolo_image.get_item_data_fromTXT(line, self.classes)
                     result_idx +=1
                 self.images.append(yolo_image)
                 result_idx -= 1
@@ -146,3 +164,4 @@ class YOLOresult:
         # print(ratioX)
         # print(ratioY)
         return point_list
+
